@@ -1,405 +1,275 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Play, RotateCcw, Trophy } from 'lucide-react';
+import pygame
+import random
+import time
 
-export default function SnakeBattle() {
-  const [gameState, setGameState] = useState('menu'); // menu, playing, gameover
-  const [snake1, setSnake1] = useState([{ x: 5, y: 10 }]);
-  const [snake2, setSnake2] = useState([{ x: 25, y: 10 }]);
-  const [direction1, setDirection1] = useState({ x: 1, y: 0 });
-  const [direction2, setDirection2] = useState({ x: -1, y: 0 });
-  const [food, setFood] = useState([]);
-  const [scores, setScores] = useState({ player1: 0, player2: 0 });
-  const [winner, setWinner] = useState('');
-  const [snakeLength, setSnakeLength] = useState(1);
-  const [roundTime, setRoundTime] = useState(0);
-  const [gameWinner, setGameWinner] = useState(null);
-  const snakeLengthRef = useRef(1);
-  const gameStartTimeRef = useRef(null);
-  
-  const gridSize = 20;
-  const cellSize = 20;
-  const gameLoopRef = useRef(null);
-  const nextDirection1 = useRef({ x: 1, y: 0 });
-  const nextDirection2 = useRef({ x: -1, y: 0 });
+# 초기화
+pygame.init()
 
-  // 먹이 생성
-  const generateFood = (snake1Pos, snake2Pos) => {
-    const newFood = [];
-    for (let i = 0; i < 3; i++) {
-      let foodPos;
-      let attempts = 0;
-      do {
-        foodPos = {
-          x: Math.floor(Math.random() * gridSize),
-          y: Math.floor(Math.random() * gridSize)
-        };
-        attempts++;
-      } while (
-        attempts < 100 &&
-        (snake1Pos.some(s => s.x === foodPos.x && s.y === foodPos.y) ||
-         snake2Pos.some(s => s.x === foodPos.x && s.y === foodPos.y) ||
-         newFood.some(f => f.x === foodPos.x && f.y === foodPos.y))
-      );
-      newFood.push(foodPos);
-    }
-    return newFood;
-  };
+# 색상
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+BLUE = (59, 130, 246)
+LIGHT_BLUE = (96, 165, 250)
+RED = (239, 68, 68)
+LIGHT_RED = (248, 113, 113)
+YELLOW = (250, 204, 21)
+GRAY = (30, 30, 30)
+GREEN = (34, 197, 94)
 
-  // 게임 시작
-  const startGame = () => {
-    if (gameWinner) {
-      setScores({ player1: 0, player2: 0 });
-      setGameWinner(null);
-    }
+# 게임 설정
+GRID_SIZE = 20
+CELL_SIZE = 25
+WIDTH = GRID_SIZE * CELL_SIZE
+HEIGHT = GRID_SIZE * CELL_SIZE + 100  # 점수판 공간
+
+# 화면 설정
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("스네이크 배틀")
+clock = pygame.time.Clock()
+font = pygame.font.Font(None, 36)
+small_font = pygame.font.Font(None, 24)
+
+class Snake:
+    def __init__(self, x, y, color, light_color):
+        self.body = [(x, y)]
+        self.direction = (0, 0)
+        self.color = color
+        self.light_color = light_color
+        self.alive = True
     
-    const initialSnake1 = [{ x: 3, y: 10 }];
-    const initialSnake2 = [{ x: 16, y: 10 }];
+    def move(self, current_length):
+        if not self.alive or self.direction == (0, 0):
+            return
+        
+        head_x, head_y = self.body[0]
+        dx, dy = self.direction
+        new_head = ((head_x + dx) % GRID_SIZE, (head_y + dy) % GRID_SIZE)
+        
+        self.body.insert(0, new_head)
+        # 시간에 따른 길이로 제한
+        if len(self.body) > current_length:
+            self.body.pop()
     
-    setSnake1(initialSnake1);
-    setSnake2(initialSnake2);
-    setDirection1({ x: 1, y: 0 });
-    setDirection2({ x: -1, y: 0 });
-    nextDirection1.current = { x: 1, y: 0 };
-    nextDirection2.current = { x: -1, y: 0 };
-    setFood(generateFood(initialSnake1, initialSnake2));
-    setGameState('playing');
-    setWinner('');
-    setSnakeLength(1);
-    snakeLengthRef.current = 1;
-    gameStartTimeRef.current = Date.now();
-    setRoundTime(0);
-  };
-
-  // 키보드 입력
-  useEffect(() => {
-    const handleKeyPress = (e) => {
-      if (gameState !== 'playing') {
-        if (e.key === ' ') {
-          startGame();
-        }
-        return;
-      }
-
-      // Player 1: WASD
-      if (e.key === 'w' && direction1.y === 0) {
-        nextDirection1.current = { x: 0, y: -1 };
-      } else if (e.key === 's' && direction1.y === 0) {
-        nextDirection1.current = { x: 0, y: 1 };
-      } else if (e.key === 'a' && direction1.x === 0) {
-        nextDirection1.current = { x: -1, y: 0 };
-      } else if (e.key === 'd' && direction1.x === 0) {
-        nextDirection1.current = { x: 1, y: 0 };
-      }
-
-      // Player 2: Arrow Keys
-      if (e.key === 'ArrowUp' && direction2.y === 0) {
-        nextDirection2.current = { x: 0, y: -1 };
-      } else if (e.key === 'ArrowDown' && direction2.y === 0) {
-        nextDirection2.current = { x: 0, y: 1 };
-      } else if (e.key === 'ArrowLeft' && direction2.x === 0) {
-        nextDirection2.current = { x: -1, y: 0 };
-      } else if (e.key === 'ArrowRight' && direction2.x === 0) {
-        nextDirection2.current = { x: 1, y: 0 };
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [gameState, direction1, direction2]);
-
-  // 게임 루프
-  useEffect(() => {
-    if (gameState !== 'playing') return;
-
-    // 라운드 시간 증가 타이머 (1초마다)
-    const timeInterval = setInterval(() => {
-      setRoundTime(prev => prev + 1);
-    }, 1000);
-
-    gameLoopRef.current = setInterval(() => {
-      // 현재 시간 기반으로 뱀 길이 계산 (2초마다 1칸)
-      const elapsedSeconds = Math.floor((Date.now() - gameStartTimeRef.current) / 1000);
-      const currentLength = Math.floor(elapsedSeconds / 2) + 1;
-      snakeLengthRef.current = currentLength;
-      setSnakeLength(currentLength);
-
-      setDirection1(nextDirection1.current);
-      setDirection2(nextDirection2.current);
-
-      setSnake1(prev => {
-        const head = prev[0];
-        const newHead = {
-          x: (head.x + nextDirection1.current.x + gridSize) % gridSize,
-          y: (head.y + nextDirection1.current.y + gridSize) % gridSize
-        };
-
-        // 새로운 뱀 몸통 생성
-        const newSnake = [newHead, ...prev];
+    def check_collision(self, other_snake):
+        if not self.alive:
+            return False
         
-        // 먹이 먹기 체크
-        const ateFood = food.findIndex(f => f.x === newHead.x && f.y === newHead.y);
+        head = self.body[0]
         
-        if (ateFood !== -1) {
-          setScores(s => {
-            const newScore = { ...s, player1: s.player1 + 10 };
-            if (newScore.player1 >= 500) {
-              setGameState('gameover');
-              setGameWinner('player1');
-              setWinner('🎉 플레이어 1 최종 승리! 🎉');
-            }
-            return newScore;
-          });
-          setFood(f => {
-            const newFood = [...f];
-            newFood.splice(ateFood, 1);
-            if (newFood.length < 3) {
-              const additionalFood = generateFood(newSnake, snake2);
-              return [...newFood, ...additionalFood.slice(0, 3 - newFood.length)];
-            }
-            return newFood;
-          });
-        }
-
-        // 시간에 따른 길이로 제한
-        return newSnake.slice(0, currentLength);
-      });
-
-      setSnake2(prev => {
-        const head = prev[0];
-        const newHead = {
-          x: (head.x + nextDirection2.current.x + gridSize) % gridSize,
-          y: (head.y + nextDirection2.current.y + gridSize) % gridSize
-        };
-
-        // 새로운 뱀 몸통 생성
-        const newSnake = [newHead, ...prev];
+        # 자기 몸과 충돌
+        if head in self.body[1:]:
+            return True
         
-        // 먹이 먹기 체크
-        const ateFood = food.findIndex(f => f.x === newHead.x && f.y === newHead.y);
+        # 상대 뱀과 충돌
+        if head in other_snake.body:
+            return True
         
-        if (ateFood !== -1) {
-          setScores(s => {
-            const newScore = { ...s, player2: s.player2 + 10 };
-            if (newScore.player2 >= 500) {
-              setGameState('gameover');
-              setGameWinner('player2');
-              setWinner('🎉 플레이어 2 최종 승리! 🎉');
-            }
-            return newScore;
-          });
-          setFood(f => {
-            const newFood = [...f];
-            newFood.splice(ateFood, 1);
-            if (newFood.length < 3) {
-              const additionalFood = generateFood(snake1, newSnake);
-              return [...newFood, ...additionalFood.slice(0, 3 - newFood.length)];
-            }
-            return newFood;
-          });
-        }
+        return False
+    
+    def draw(self, surface):
+        if not self.alive:
+            return
+        
+        for i, (x, y) in enumerate(self.body):
+            rect = pygame.Rect(x * CELL_SIZE, y * CELL_SIZE + 100, CELL_SIZE - 2, CELL_SIZE - 2)
+            if i == 0:
+                pygame.draw.rect(surface, self.color, rect, border_radius=3)
+                # 머리에 빛나는 효과
+                pygame.draw.rect(surface, self.color, rect, 2, border_radius=3)
+            else:
+                pygame.draw.rect(surface, self.light_color, rect, border_radius=2)
 
-        // 시간에 따른 길이로 제한
-        return newSnake.slice(0, currentLength);
-      });
+def generate_food(snake1, snake2):
+    while True:
+        food = (random.randint(0, GRID_SIZE - 1), random.randint(0, GRID_SIZE - 1))
+        if food not in snake1.body and food not in snake2.body:
+            return food
 
-      // 충돌 체크
-      setSnake1(s1 => {
-        setSnake2(s2 => {
-          const head1 = s1[0];
-          const head2 = s2[0];
+def draw_text(surface, text, x, y, font_obj, color=WHITE):
+    text_surface = font_obj.render(text, True, color)
+    text_rect = text_surface.get_rect(center=(x, y))
+    surface.blit(text_surface, text_rect)
 
-          const p1HitSelf = s1.slice(1).some(s => s.x === head1.x && s.y === head1.y);
-          const p1HitP2 = s2.some(s => s.x === head1.x && s.y === head1.y);
-          const p2HitSelf = s2.slice(1).some(s => s.x === head2.x && s.y === head2.y);
-          const p2HitP1 = s1.some(s => s.x === head2.x && s.y === head2.y);
+def main():
+    # 게임 변수
+    snake1 = Snake(3, 10, BLUE, LIGHT_BLUE)
+    snake2 = Snake(16, 10, RED, LIGHT_RED)
+    snake1.direction = (1, 0)
+    snake2.direction = (-1, 0)
+    
+    food_list = [generate_food(snake1, snake2) for _ in range(3)]
+    
+    scores = [0, 0]
+    game_state = "playing"  # playing, gameover, menu
+    round_start_time = time.time()
+    current_length = 1
+    winner_text = ""
+    game_winner = None
+    
+    running = True
+    
+    while running:
+        # 이벤트 처리
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            
+            if event.type == pygame.KEYDOWN:
+                if game_state == "menu" or game_state == "gameover":
+                    if event.key == pygame.K_SPACE:
+                        if game_winner:
+                            scores = [0, 0]
+                            game_winner = None
+                        
+                        # 게임 재시작
+                        snake1 = Snake(3, 10, BLUE, LIGHT_BLUE)
+                        snake2 = Snake(16, 10, RED, LIGHT_RED)
+                        snake1.direction = (1, 0)
+                        snake2.direction = (-1, 0)
+                        food_list = [generate_food(snake1, snake2) for _ in range(3)]
+                        game_state = "playing"
+                        round_start_time = time.time()
+                        current_length = 1
+                        winner_text = ""
+                    elif event.key == pygame.K_r:
+                        scores = [0, 0]
+                        game_winner = None
+                        game_state = "menu"
+                
+                # 플레이어 1 (WASD)
+                if game_state == "playing":
+                    if event.key == pygame.K_w and snake1.direction != (0, 1):
+                        snake1.direction = (0, -1)
+                    elif event.key == pygame.K_s and snake1.direction != (0, -1):
+                        snake1.direction = (0, 1)
+                    elif event.key == pygame.K_a and snake1.direction != (1, 0):
+                        snake1.direction = (-1, 0)
+                    elif event.key == pygame.K_d and snake1.direction != (-1, 0):
+                        snake1.direction = (1, 0)
+                    
+                    # 플레이어 2 (방향키)
+                    if event.key == pygame.K_UP and snake2.direction != (0, 1):
+                        snake2.direction = (0, -1)
+                    elif event.key == pygame.K_DOWN and snake2.direction != (0, -1):
+                        snake2.direction = (0, 1)
+                    elif event.key == pygame.K_LEFT and snake2.direction != (1, 0):
+                        snake2.direction = (-1, 0)
+                    elif event.key == pygame.K_RIGHT and snake2.direction != (-1, 0):
+                        snake2.direction = (1, 0)
+        
+        # 게임 로직
+        if game_state == "playing":
+            # 시간에 따른 뱀 길이 계산 (2초마다 1칸)
+            elapsed_time = time.time() - round_start_time
+            round_time = int(elapsed_time)
+            current_length = int(elapsed_time / 2) + 1
+            
+            # 뱀 이동
+            snake1.move(current_length)
+            snake2.move(current_length)
+            
+            # 먹이 먹기
+            if snake1.body[0] in food_list:
+                food_list.remove(snake1.body[0])
+                scores[0] += 10
+                if scores[0] >= 500:
+                    game_state = "gameover"
+                    game_winner = 1
+                    winner_text = "플레이어 1 최종 승리!"
+                food_list.append(generate_food(snake1, snake2))
+            
+            if snake2.body[0] in food_list:
+                food_list.remove(snake2.body[0])
+                scores[1] += 10
+                if scores[1] >= 500:
+                    game_state = "gameover"
+                    game_winner = 2
+                    winner_text = "플레이어 2 최종 승리!"
+                food_list.append(generate_food(snake1, snake2))
+            
+            # 충돌 체크
+            if snake1.check_collision(snake2):
+                kill_bonus = 50 + (round_time * 2)
+                scores[1] += kill_bonus
+                if scores[1] >= 500:
+                    game_state = "gameover"
+                    game_winner = 2
+                    winner_text = "플레이어 2 최종 승리!"
+                else:
+                    game_state = "gameover"
+                    winner_text = f"플레이어 2 라운드 승리! +{kill_bonus}점"
+            
+            if snake2.check_collision(snake1):
+                kill_bonus = 50 + (round_time * 2)
+                scores[0] += kill_bonus
+                if scores[0] >= 500:
+                    game_state = "gameover"
+                    game_winner = 1
+                    winner_text = "플레이어 1 최종 승리!"
+                else:
+                    game_state = "gameover"
+                    winner_text = f"플레이어 1 라운드 승리! +{kill_bonus}점"
+        
+        # 그리기
+        screen.fill(BLACK)
+        
+        # 점수판
+        pygame.draw.rect(screen, GRAY, (0, 0, WIDTH, 100))
+        
+        # 점수
+        draw_text(screen, f"플레이어 1: {scores[0]}", WIDTH // 4, 30, font, BLUE)
+        draw_text(screen, f"플레이어 2: {scores[1]}", WIDTH * 3 // 4, 30, font, RED)
+        draw_text(screen, "목표: 500점", WIDTH // 2, 60, small_font, YELLOW)
+        
+        if game_state == "playing":
+            kill_bonus = 50 + (round_time * 2)
+            draw_text(screen, f"시간: {round_time}초 | 킬: {kill_bonus}점 | 길이: {current_length}", 
+                     WIDTH // 2, 85, small_font, WHITE)
+        
+        # 게임판 배경
+        pygame.draw.rect(screen, GRAY, (0, 100, WIDTH, HEIGHT - 100))
+        
+        # 먹이
+        for food_x, food_y in food_list:
+            pygame.draw.circle(screen, YELLOW, 
+                             (food_x * CELL_SIZE + CELL_SIZE // 2, 
+                              food_y * CELL_SIZE + CELL_SIZE // 2 + 100), 
+                             CELL_SIZE // 2 - 2)
+        
+        # 뱀
+        snake1.draw(screen)
+        snake2.draw(screen)
+        
+        # 게임 오버 화면
+        if game_state == "gameover":
+            overlay = pygame.Surface((WIDTH, HEIGHT - 100))
+            overlay.set_alpha(200)
+            overlay.fill(BLACK)
+            screen.blit(overlay, (0, 100))
+            
+            draw_text(screen, winner_text, WIDTH // 2, HEIGHT // 2 - 20, font, GREEN)
+            if game_winner:
+                draw_text(screen, "스페이스: 새 게임 | R: 점수 초기화", 
+                         WIDTH // 2, HEIGHT // 2 + 30, small_font, WHITE)
+            else:
+                draw_text(screen, "스페이스: 다음 라운드 | R: 점수 초기화", 
+                         WIDTH // 2, HEIGHT // 2 + 30, small_font, WHITE)
+        
+        if game_state == "menu":
+            overlay = pygame.Surface((WIDTH, HEIGHT - 100))
+            overlay.set_alpha(220)
+            overlay.fill(BLACK)
+            screen.blit(overlay, (0, 100))
+            
+            draw_text(screen, "스네이크 배틀", WIDTH // 2, HEIGHT // 2 - 60, font, GREEN)
+            draw_text(screen, "플레이어 1: W/A/S/D", WIDTH // 2, HEIGHT // 2 - 10, small_font, BLUE)
+            draw_text(screen, "플레이어 2: 방향키", WIDTH // 2, HEIGHT // 2 + 20, small_font, RED)
+            draw_text(screen, "스페이스를 눌러 시작!", WIDTH // 2, HEIGHT // 2 + 60, small_font, YELLOW)
+        
+        pygame.display.flip()
+        clock.tick(10)  # 10 FPS
+    
+    pygame.quit()
 
-          // 킬 보너스 = 50 + (라운드 시간 * 2)
-          const killBonus = 50 + (roundTime * 2);
-
-          if (p1HitSelf || p1HitP2) {
-            setScores(s => {
-              const newScore = { ...s, player2: s.player2 + killBonus };
-              if (newScore.player2 >= 500) {
-                setGameWinner('player2');
-                setWinner('🎉 플레이어 2 최종 승리! 🎉');
-              } else {
-                setWinner(`플레이어 2 라운드 승리! +${killBonus}점`);
-              }
-              return newScore;
-            });
-            setGameState('gameover');
-          } else if (p2HitSelf || p2HitP1) {
-            setScores(s => {
-              const newScore = { ...s, player1: s.player1 + killBonus };
-              if (newScore.player1 >= 500) {
-                setGameWinner('player1');
-                setWinner('🎉 플레이어 1 최종 승리! 🎉');
-              } else {
-                setWinner(`플레이어 1 라운드 승리! +${killBonus}점`);
-              }
-              return newScore;
-            });
-            setGameState('gameover');
-          }
-
-          return s2;
-        });
-        return s1;
-      });
-    }, 100);
-
-    return () => {
-      if (gameLoopRef.current) {
-        clearInterval(gameLoopRef.current);
-      }
-      clearInterval(timeInterval);
-    };
-  }, [gameState, food]);
-
-  const resetGame = () => {
-    setScores({ player1: 0, player2: 0 });
-    setGameState('menu');
-    setGameWinner(null);
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
-      <div className="max-w-4xl w-full">
-        <h1 className="text-5xl font-bold text-center mb-6 bg-gradient-to-r from-green-400 via-blue-400 to-purple-400 bg-clip-text text-transparent">
-          🐍 스네이크 배틀 🐍
-        </h1>
-
-        {/* 점수판 */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <div className="bg-gradient-to-br from-blue-500 to-blue-700 rounded-2xl p-4 text-center shadow-xl">
-            <div className="text-white text-sm font-semibold mb-1">플레이어 1 (WASD)</div>
-            <div className="text-4xl font-bold text-white">{scores.player1}</div>
-            <div className="text-xs text-blue-200 mt-1">목표: 500점</div>
-          </div>
-          <div className="bg-gradient-to-br from-red-500 to-red-700 rounded-2xl p-4 text-center shadow-xl">
-            <div className="text-white text-sm font-semibold mb-1">플레이어 2 (방향키)</div>
-            <div className="text-4xl font-bold text-white">{scores.player2}</div>
-            <div className="text-xs text-red-200 mt-1">목표: 500점</div>
-          </div>
-        </div>
-
-        {/* 게임 보드 */}
-        <div className="relative bg-slate-800 rounded-2xl p-4 shadow-2xl mb-4">
-          {gameState === 'playing' && (
-            <div className="text-center mb-2 space-y-1">
-              <span className="text-white text-sm block">
-                라운드 시간: {roundTime}초 | 킬 보너스: {50 + (roundTime * 2)}점
-              </span>
-              <span className="text-yellow-300 text-xs block">
-                뱀 길이: {snakeLength} | P1 실제: {snake1.length} | P2 실제: {snake2.length}
-              </span>
-            </div>
-          )}
-          <div 
-            className="relative bg-black rounded-xl overflow-hidden"
-            style={{ 
-              width: gridSize * cellSize, 
-              height: gridSize * cellSize,
-              margin: '0 auto'
-            }}
-          >
-            {/* 먹이 */}
-            {food.map((f, i) => (
-              <div
-                key={`food-${i}`}
-                className="absolute bg-yellow-400 rounded-full animate-pulse"
-                style={{
-                  left: f.x * cellSize,
-                  top: f.y * cellSize,
-                  width: cellSize - 3,
-                  height: cellSize - 3,
-                  boxShadow: '0 0 15px rgba(250, 204, 21, 0.8)'
-                }}
-              />
-            ))}
-
-            {/* Snake 1 */}
-            {snake1.map((segment, i) => (
-              <div
-                key={`s1-${i}`}
-                className="absolute rounded"
-                style={{
-                  left: segment.x * cellSize,
-                  top: segment.y * cellSize,
-                  width: cellSize - 3,
-                  height: cellSize - 3,
-                  backgroundColor: i === 0 ? '#3b82f6' : '#60a5fa',
-                  boxShadow: i === 0 ? '0 0 15px rgba(59, 130, 246, 0.8)' : 'none'
-                }}
-              />
-            ))}
-
-            {/* Snake 2 */}
-            {snake2.map((segment, i) => (
-              <div
-                key={`s2-${i}`}
-                className="absolute rounded"
-                style={{
-                  left: segment.x * cellSize,
-                  top: segment.y * cellSize,
-                  width: cellSize - 3,
-                  height: cellSize - 3,
-                  backgroundColor: i === 0 ? '#ef4444' : '#f87171',
-                  boxShadow: i === 0 ? '0 0 15px rgba(239, 68, 68, 0.8)' : 'none'
-                }}
-              />
-            ))}
-
-            {/* 게임 오버레이 */}
-            {gameState !== 'playing' && (
-              <div className="absolute inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center">
-                {gameState === 'menu' ? (
-                  <>
-                    <div className="text-white text-2xl font-bold mb-6 text-center">
-                      스페이스바를 눌러 시작!
-                    </div>
-                    <div className="text-gray-300 text-sm text-center space-y-2">
-                      <div>🔵 플레이어 1: W/A/S/D 키</div>
-                      <div>🔴 플레이어 2: 방향키</div>
-                      <div>🏆 먼저 500점에 도달하면 승리!</div>
-                      <div>⏱️ 뱀은 2초마다 자동으로 길어집니다</div>
-                      <div>⭐ 먹이: +10점</div>
-                      <div>💥 킬: 50 + (시간 × 2)점</div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="text-white text-3xl font-bold mb-4">
-                      {winner}
-                    </div>
-                    <div className="text-gray-300 text-lg mb-6">
-                      스페이스바로 다시 시작
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* 버튼 */}
-        <div className="flex gap-4 justify-center">
-          <button
-            onClick={startGame}
-            className="bg-gradient-to-r from-green-500 to-green-600 text-white px-8 py-3 rounded-xl font-bold hover:from-green-600 hover:to-green-700 transition-all shadow-lg flex items-center gap-2"
-          >
-            <Play size={20} />
-            {gameWinner ? '새 게임' : gameState === 'menu' ? '게임 시작' : '다음 라운드'}
-          </button>
-          <button
-            onClick={resetGame}
-            className="bg-gradient-to-r from-gray-600 to-gray-700 text-white px-8 py-3 rounded-xl font-bold hover:from-gray-700 hover:to-gray-800 transition-all shadow-lg flex items-center gap-2"
-          >
-            <RotateCcw size={20} />
-            점수 초기화
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+if __name__ == "__main__":
+    main()
