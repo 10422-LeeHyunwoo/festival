@@ -3,10 +3,8 @@ import streamlit as st
 
 st.set_page_config(page_title="스네이크 배틀", layout="centered")
 
-# 디버그: HTML이 제대로 들어가는지 확인
-st.write("게임 로딩 중... (화면 아래에 게임이 나타납니다)")
+st.write("게임 로딩 중...")
 
-# 최소한의 HTML + JS (React 없이도 동작 보장)
 HTML_CONTENT = """
 <!DOCTYPE html>
 <html>
@@ -15,21 +13,29 @@ HTML_CONTENT = """
   <title>스네이크 배틀</title>
   <style>
     body, html { margin:0; padding:0; height:100%; background:#111; font-family: sans-serif; }
-    #game { width: 500px; height: 600px; margin: 20px auto; background: #000; position: relative; overflow: hidden; border: 3px solid #333; border-radius: 12px; }
-    .snake1 { background: #3b82f6; border-radius: 4px; position: absolute; box-shadow: 0 0 8px #3b82f6; }
-    .snake2 { background: #ef4444; border-radius: 4px; position: absolute; box-shadow: 0 0 8px #ef4444; }
+    #game { width: 500px; height: 650px; margin: 20px auto; background: #000; position: relative; overflow: hidden; border: 3px solid #333; border-radius: 12px; }
+    .score { position: absolute; top: 10px; color: white; font-weight: bold; z-index: 10; }
+    #p1 { left: 20px; color: #60a5fa; }
+    #p2 { right: 20px; color: #f87171; }
+    #target { left: 50%; transform: translateX(-50%); color: #facc15; }
+    .snake1 { background: #3b82f6; border-radius: 4px; position: absolute; box-shadow: 0 0 10px #3b82f6; }
+    .snake2 { background: #ef4444; border-radius: 4px; position: absolute; box-shadow: 0 0 10px #ef4444; }
     .food { background: #facc15; border-radius: 50%; position: absolute; }
-    .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 20px; }
-    button { margin-top: 20px; padding: 10px 20px; font-size: 18px; background: #22c55e; color: white; border: none; border-radius: 8px; cursor: pointer; }
+    .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 20px; z-index: 20; }
+    button { margin-top: 20px; padding: 12px 24px; font-size: 18px; background: #22c55e; color: white; border: none; border-radius: 8px; cursor: pointer; }
     button:hover { background: #16a34a; }
   </style>
 </head>
 <body>
   <div id="game">
+    <div id="p1" class="score">플레이어 1: 0</div>
+    <div id="target" class="score">목표: 500점</div>
+    <div id="p2" class="score">플레이어 2: 0</div>
     <div class="overlay" id="menu">
       <h1 style="color:#22c55e">스네이크 배틀</h1>
       <p>플레이어 1: W A S D</p>
       <p>플레이어 2: 방향키</p>
+      <p style="color:#facc15">먹이 1개 = 10점</p>
       <button onclick="start()">게임 시작</button>
     </div>
   </div>
@@ -42,8 +48,12 @@ HTML_CONTENT = """
     let dir1 = {x:1,y:0};
     let dir2 = {x:-1,y:0};
     let food = [];
+    let scores = [0, 0];
     let gameState = 'menu';
     let interval;
+    let startTime = 0;
+    let roundTime = 0;
+    let currentLength = 1;
 
     function initFood() {
       food = [];
@@ -55,40 +65,82 @@ HTML_CONTENT = """
       }
     }
 
+    function updateScore() {
+      document.getElementById('p1').textContent = `플레이어 1: ${scores[0]}`;
+      document.getElementById('p2').textContent = `플레이어 2: ${scores[1]}`;
+    }
+
     function start() {
       snake1 = [{x:3,y:10}]; snake2 = [{x:16,y:10}];
       dir1 = {x:1,y:0}; dir2 = {x:-1,y:0};
+      scores = [0, 0];
       initFood();
       gameState = 'playing';
+      startTime = Date.now();
       document.getElementById('menu').style.display = 'none';
+      updateScore();
       if (interval) clearInterval(interval);
       interval = setInterval(tick, 150);
     }
 
     function tick() {
+      const now = Date.now();
+      const elapsed = (now - startTime) / 1000;
+      roundTime = Math.floor(elapsed);
+      currentLength = Math.floor(elapsed / 2) + 1;
+
       // 이동
       let h1 = { x: (snake1[0].x + dir1.x + GRID) % GRID, y: (snake1[0].y + dir1.y + GRID) % GRID };
       let h2 = { x: (snake2[0].x + dir2.x + GRID) % GRID, y: (snake2[0].y + dir2.y + GRID) % GRID };
 
-      // 먹이
-      if (food.some((f,i) => { if (f.x===h1.x && f.y===h1.y) { food.splice(i,1); return true; } return false; })) {
-        snake1 = [h1, ...snake1];
-        if (food.length < 3) food.push(randFood());
-      } else snake1 = [h1, ...snake1.slice(0,-1)];
+      let ate1 = false, ate2 = false;
 
-      if (food.some((f,i) => { if (f.x===h2.x && f.y===h2.y) { food.splice(i,1); return true; } return false; })) {
-        snake2 = [h2, ...snake2];
-        if (food.length < 3) food.push(randFood());
-      } else snake2 = [h2, ...snake2.slice(0,-1)];
+      // 먹이 먹기
+      for (let i = food.length - 1; i >= 0; i--) {
+        if (food[i].x === h1.x && food[i].y === h1.y) {
+          food.splice(i, 1);
+          scores[0] += 10;
+          ate1 = true;
+        } else if (food[i].x === h2.x && food[i].y === h2.y) {
+          food.splice(i, 1);
+          scores[1] += 10;
+          ate2 = true;
+        }
+      }
+
+      // 뱀 성장
+      if (ate1) snake1 = [h1, ...snake1];
+      else snake1 = [h1, ...snake1.slice(0, -currentLength + 1)];
+
+      if (ate2) snake2 = [h2, ...snake2];
+      else snake2 = [h2, ...snake2.slice(0, -currentLength + 1)];
+
+      // 먹이 보충
+      while (food.length < 3) {
+        food.push(randFood());
+      }
 
       // 충돌
       if (snake1.slice(1).some(s=>s.x===h1.x&&s.y===h1.y) || snake2.some(s=>s.x===h1.x&&s.y===h1.y)) {
-        end("플레이어 2 승리!");
+        const bonus = 50 + roundTime * 2;
+        scores[1] += bonus;
+        end(`플레이어 2 승리! +${bonus}점`, scores[1] >= 500);
+        return;
       }
       if (snake2.slice(1).some(s=>s.x===h2.x&&s.y===h2.y) || snake1.some(s=>s.x===h2.x&&s.y===h2.y)) {
-        end("플레이어 1 승리!");
+        const bonus = 50 + roundTime * 2;
+        scores[0] += bonus;
+        end(`플레이어 1 승리! +${bonus}점`, scores[0] >= 500);
+        return;
       }
 
+      // 500점 승리
+      if (scores[0] >= 500 || scores[1] >= 500) {
+        end(scores[0] >= 500 ? "플레이어 1 최종 승리!" : "플레이어 2 최종 승리!", true);
+        return;
+      }
+
+      updateScore();
       render();
     }
 
@@ -99,20 +151,22 @@ HTML_CONTENT = """
       return f;
     }
 
-    function end(msg) {
+    function end(msg, isFinal) {
       clearInterval(interval);
       const overlay = document.createElement('div');
       overlay.className = 'overlay';
-      overlay.innerHTML = `<h1 style="color:#22c55e">${msg}</h1><button onclick="location.reload()">다시 시작</button>`;
+      overlay.innerHTML = `
+        <h1 style="color:#22c55e">${msg}</h1>
+        <p>플레이어 1: ${scores[0]}점 | 플레이어 2: ${scores[1]}점</p>
+        <button onclick="location.reload()">${isFinal ? '새 게임' : '다음 라운드'}</button>
+      `;
       document.getElementById('game').appendChild(overlay);
     }
 
     function render() {
       const game = document.getElementById('game');
-      // 기존 제거
       game.querySelectorAll('.snake1, .snake2, .food').forEach(e=>e.remove());
 
-      // 뱀1
       snake1.forEach((s,i) => {
         const el = document.createElement('div');
         el.className = 'snake1';
@@ -123,7 +177,6 @@ HTML_CONTENT = """
         game.appendChild(el);
       });
 
-      // 뱀2
       snake2.forEach((s,i) => {
         const el = document.createElement('div');
         el.className = 'snake2';
@@ -134,7 +187,6 @@ HTML_CONTENT = """
         game.appendChild(el);
       });
 
-      // 먹이
       food.forEach(f => {
         const el = document.createElement('div');
         el.className = 'food';
@@ -145,7 +197,6 @@ HTML_CONTENT = """
       });
     }
 
-    // 키보드
     document.addEventListener('keydown', e => {
       if (gameState !== 'playing') return;
       if (e.key === 'w' && dir1.y === 0) dir1 = {x:0,y:-1};
@@ -158,22 +209,19 @@ HTML_CONTENT = """
       if (e.key === 'ArrowRight' && dir2.x === 0) dir2 = {x:1,y:0};
     });
 
-    // 시작 화면
     window.start = start;
   </script>
 </body>
 </html>
 """
 
-# 핵심: height를 고정, scrolling=False
-st.components.v1.html(HTML_CONTENT, height=650, scrolling=False)
+st.components.v1.html(HTML_CONTENT, height=680, scrolling=False)
 
-# 사이드바
 with st.sidebar:
-    st.header("조작법")
+    st.header("점수 시스템")
     st.markdown("""
-    - **Player 1**: `W` `A` `S` `D`
-    - **Player 2**: `↑` `↓` `←` `→`
-    - **게임 시작**: 버튼 클릭
+    - 먹이 1개 = **+10점**
+    - 상대를 죽이면 = **50 + (시간 × 2)점**
+    - **500점 먼저 도달** = 최종 승리!
     """)
-    st.success("화면이 뜨면 게임 시작!")
+    st.success("점수가 실시간으로 올라갑니다!")
