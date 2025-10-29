@@ -13,7 +13,7 @@ HTML_CONTENT = """
   <title>스네이크 배틀</title>
   <style>
     body, html { margin:0; padding:0; height:100%; background:#111; font-family: sans-serif; }
-    #game { width: 500px; height: 680px; margin: 20px auto; background: #000; position: relative; overflow: hidden; border: 3px solid #333; border-radius: 12px; }
+    #game { width: 500px; height: 720px; margin: 20px auto; background: #000; position: relative; overflow: hidden; border: 3px solid #333; border-radius: 12px; }
     .score { position: absolute; top: 10px; color: white; font-weight: bold; z-index: 10; font-size: 14px; }
     #p1 { left: 20px; color: #60a5fa; }
     #p2 { right: 20px; color: #f87171; }
@@ -23,9 +23,10 @@ HTML_CONTENT = """
     .snake2 { background: #ef4444; border-radius: 4px; position: absolute; box-shadow: 0 0 10px #ef4444; }
     .food { background: #facc15; border-radius: 50%; position: absolute; animation: pulse 1s infinite; }
     @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
-    .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 20px; z-index: 20; }
+    .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 20px; z-index: 20; text-align: center; }
     button { margin-top: 20px; padding: 12px 24px; font-size: 18px; background: #22c55e; color: white; border: none; border-radius: 8px; cursor: pointer; }
     button:hover { background: #16a34a; }
+    .final { color: #fbbf24; font-size: 28px; }
   </style>
 </head>
 <body>
@@ -33,12 +34,13 @@ HTML_CONTENT = """
     <div id="p1" class="score">플레이어 1: 0</div>
     <div id="target" class="score">목표: 500점</div>
     <div id="p2" class="score">플레이어 2: 0</div>
-    <div id="info" class="score">길이: 1 | 시간: 0초</div>
+    <div id="info" class="score">라운드 시간: 0초 | 길이: 1</div>
     <div class="overlay" id="menu">
       <h1 style="color:#22c55e">스네이크 배틀</h1>
       <p>플레이어 1: W A S D</p>
       <p>플레이어 2: 방향키</p>
-      <p style="color:#facc15">먹이 1개 = +10점 | 2초마다 길이 +1</p>
+      <p style="color:#facc15">먹이 +10점 | 킬 보너스: 50 + (시간×2)</p>
+      <p style="color:#fbbf24">누적 500점 = 최종 승리!</p>
       <button onclick="start()">게임 시작</button>
     </div>
   </div>
@@ -51,7 +53,8 @@ HTML_CONTENT = """
     let dir1 = {x:1,y:0};
     let dir2 = {x:-1,y:0};
     let food = [];
-    let scores = [0, 0];
+    let totalScores = [0, 0];  // 누적 점수
+    let roundScores = [0, 0];  // 이번 라운드 점수 (킬 보너스용)
     let gameState = 'menu';
     let interval;
     let startTime = 0;
@@ -69,23 +72,27 @@ HTML_CONTENT = """
     }
 
     function updateUI() {
-      document.getElementById('p1').textContent = `플레이어 1: ${scores[0]}`;
-      document.getElementById('p2').textContent = `플레이어 2: ${scores[1]}`;
-      document.getElementById('info').textContent = `길이: ${currentLength} | 시간: ${roundTime}초`;
+      document.getElementById('p1').textContent = `플레이어 1: ${totalScores[0]}`;
+      document.getElementById('p2').textContent = `플레이어 2: ${totalScores[1]}`;
+      document.getElementById('info').textContent = `라운드 시간: ${roundTime}초 | 길이: ${currentLength}`;
     }
 
-    function start() {
+    function startRound() {
       snake1 = [{x:3,y:10}]; snake2 = [{x:16,y:10}];
       dir1 = {x:1,y:0}; dir2 = {x:-1,y:0};
-      scores = [0, 0];
-      currentLength = 1;
+      roundScores = [0, 0];
       initFood();
       gameState = 'playing';
       startTime = Date.now();
-      document.getElementById('menu').style.display = 'none';
+      document.querySelectorAll('.overlay').forEach(o => o.remove());
       updateUI();
       if (interval) clearInterval(interval);
       interval = setInterval(tick, 150);
+    }
+
+    function start() {
+      totalScores = [0, 0];
+      startRound();
     }
 
     function tick() {
@@ -104,59 +111,49 @@ HTML_CONTENT = """
       for (let i = food.length - 1; i >= 0; i--) {
         if (food[i].x === h1.x && food[i].y === h1.y) {
           food.splice(i, 1);
-          scores[0] += 10;
+          roundScores[0] += 10;
+          totalScores[0] += 10;
           ate1 = true;
         } else if (food[i].x === h2.x && food[i].y === h2.y) {
           food.splice(i, 1);
-          scores[1] += 10;
+          roundScores[1] += 10;
+          totalScores[1] += 10;
           ate2 = true;
         }
       }
 
-      // 뱀 성장 (먹이 먹으면 길이 유지, 아니면 currentLength로 자름)
-      if (ate1) {
-        snake1 = [h1, ...snake1];  // 먹으면 길이 +1
-      } else {
-        // currentLength보다 길면 자름
-        if (snake1.length > currentLength) {
-          snake1 = [h1, ...snake1.slice(0, currentLength)];
-        } else {
-          snake1 = [h1, ...snake1.slice(0, -1)];
-        }
-      }
+      // 뱀 성장
+      if (ate1) snake1 = [h1, ...snake1];
+      else if (snake1.length > currentLength) snake1 = [h1, ...snake1.slice(0, currentLength)];
+      else snake1 = [h1, ...snake1.slice(0, -1)];
 
-      if (ate2) {
-        snake2 = [h2, ...snake2];
-      } else {
-        if (snake2.length > currentLength) {
-          snake2 = [h2, ...snake2.slice(0, currentLength)];
-        } else {
-          snake2 = [h2, ...snake2.slice(0, -1)];
-        }
-      }
+      if (ate2) snake2 = [h2, ...snake2];
+      else if (snake2.length > currentLength) snake2 = [h2, ...snake2.slice(0, currentLength)];
+      else snake2 = [h2, ...snake2.slice(0, -1)];
 
       // 먹이 보충
-      while (food.length < 3) {
-        food.push(randFood());
-      }
+      while (food.length < 3) food.push(randFood());
 
-      // 충돌 체크
+      // 충돌 → 라운드 종료 + 킬 보너스
       if (snake1.slice(1).some(s=>s.x===h1.x&&s.y===h1.y) || snake2.some(s=>s.x===h1.x&&s.y===h1.y)) {
         const bonus = 50 + roundTime * 2;
-        scores[1] += bonus;
-        end(`플레이어 2 승리! +${bonus}점`, scores[1] >= 500);
+        totalScores[1] += bonus;
+        roundScores[1] += bonus;
+        showRoundEnd(2, bonus, false);
         return;
       }
       if (snake2.slice(1).some(s=>s.x===h2.x&&s.y===h2.y) || snake1.some(s=>s.x===h2.x&&s.y===h2.y)) {
         const bonus = 50 + roundTime * 2;
-        scores[0] += bonus;
-        end(`플레이어 1 승리! +${bonus}점`, scores[0] >= 500);
+        totalScores[0] += bonus;
+        roundScores[0] += bonus;
+        showRoundEnd(1, bonus, false);
         return;
       }
 
-      // 500점 승리
-      if (scores[0] >= 500 || scores[1] >= 500) {
-        end(scores[0] >= 500 ? "플레이어 1 최종 승리!" : "플레이어 2 최종 승리!", true);
+      // 500점 도달 → 최종 승리
+      if (totalScores[0] >= 500 || totalScores[1] >= 500) {
+        const winner = totalScores[0] >= 500 ? 1 : 2;
+        showRoundEnd(winner, 0, true);
         return;
       }
 
@@ -171,15 +168,20 @@ HTML_CONTENT = """
       return f;
     }
 
-    function end(msg, isFinal) {
+    function showRoundEnd(winner, bonus, isFinal) {
       clearInterval(interval);
       const overlay = document.createElement('div');
       overlay.className = 'overlay';
+      let msg = isFinal 
+        ? `<span class="final">플레이어 ${winner} 최종 승리!</span>`
+        : `플레이어 ${winner} 라운드 승리!`;
+      if (bonus > 0) msg += `<br>킬 보너스: +${bonus}점`;
       overlay.innerHTML = `
         <h1 style="color:#22c55e">${msg}</h1>
-        <p>플레이어 1: ${scores[0]}점 | 플레이어 2: ${scores[1]}점</p>
-        <p>최대 길이: ${currentLength}</p>
-        <button onclick="location.reload()">${isFinal ? '새 게임' : '다음 라운드'}</button>
+        <p>플레이어 1: ${totalScores[0]}점 | 플레이어 2: ${totalScores[1]}점</p>
+        <button onclick="${isFinal ? 'location.reload()' : 'startRound()'}">
+          ${isFinal ? '새 게임' : '다음 라운드 (Space)'}
+        </button>
       `;
       document.getElementById('game').appendChild(overlay);
     }
@@ -218,32 +220,40 @@ HTML_CONTENT = """
       });
     }
 
+    // 키보드 + Space로 다음 라운드
     document.addEventListener('keydown', e => {
-      if (gameState !== 'playing') return;
-      if (e.key === 'w' && dir1.y === 0) dir1 = {x:0,y:-1};
-      if (e.key === 's' && dir1.y === 0) dir1 = {x:0,y:1};
-      if (e.key === 'a' && dir1.x === 0) dir1 = {x:-1,y:0};
-      if (e.key === 'd' && dir1.x === 0) dir1 = {x:1,y:0};
-      if (e.key === 'ArrowUp' && dir2.y === 0) dir2 = {x:0,y:-1};
-      if (e.key === 'ArrowDown' && dir2.y === 0) dir2 = {x:0,y:1};
-      if (e.key === 'ArrowLeft' && dir2.x === 0) dir2 = {x:-1,y:0};
-      if (e.key === 'ArrowRight' && dir2.x === 0) dir2 = {x:1,y:0};
+      if (gameState === 'playing') {
+        if (e.key === 'w' && dir1.y === 0) dir1 = {x:0,y:-1};
+        if (e.key === 's' && dir1.y === 0) dir1 = {x:0,y:1};
+        if (e.key === 'a' && dir1.x === 0) dir1 = {x:-1,y:0};
+        if (e.key === 'd' && dir1.x === 0) dir1 = {x:1,y:0};
+        if (e.key === 'ArrowUp' && dir2.y === 0) dir2 = {x:0,y:-1};
+        if (e.key === 'ArrowDown' && dir2.y === 0) dir2 = {x:0,y:1};
+        if (e.key === 'ArrowLeft' && dir2.x === 0) dir2 = {x:-1,y:0};
+        if (e.key === 'ArrowRight' && dir2.x === 0) dir2 = {x:1,y:0};
+      } else if (e.key === ' ') {
+        const overlay = document.querySelector('.overlay');
+        if (overlay && overlay.innerText.includes('다음 라운드')) {
+          startRound();
+        }
+      }
     });
 
     window.start = start;
+    window.startRound = startRound;
   </script>
 </body>
 </html>
 """
 
-st.components.v1.html(HTML_CONTENT, height=720, scrolling=False)
+st.components.v1.html(HTML_CONTENT, height=760, scrolling=False)
 
 with st.sidebar:
     st.header("게임 규칙")
     st.markdown("""
-    - **먹이 먹기** → **+10점** + **길이 +1**
-    - **2초마다** → **길이 자동 +1**
-    - **상대 죽이기** → **50 + (시간×2)점**
-    - **500점 먼저** → **최종 승리!**
+    - **한 명이 죽으면** → **라운드 종료** + **킬 보너스 (50 + 시간×2)**
+    - **점수는 누적됨**
+    - **누적 500점 도달** → **최종 승리!**
+    - **Space** → 다음 라운드
     """)
-    st.success("몸 길이가 실시간으로 늘어납니다!")
+    st.success("점수 누적 + 500점 승리 완벽 구현!")
