@@ -1,8 +1,6 @@
 import random
 import time
 
-# 초기화
-pygame.init()
 
 # 색상
 BLACK = (0, 0, 0)
